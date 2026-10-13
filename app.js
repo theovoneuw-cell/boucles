@@ -255,6 +255,11 @@
     else if (h && BY[h]) renderSong(BY[h]); else renderList();
   }
 
+  // Le signe de reprise du logo, en début (‖:) ou en fin (:‖) de boucle.
+  function rep(end, cls) {
+    return '<span class="' + (cls || 'rp') + (end ? ' end' : '') + '" aria-hidden="true"><i></i><i></i><b></b></span>';
+  }
+
   /* ----- répertoire ----- */
   function renderList() {
     document.title = 'Boucles';
@@ -262,7 +267,7 @@
       '<header class="top"><div class="toprow"><h1><svg class="mark" viewBox="0 0 130 250" aria-hidden="true"><rect width="36" height="250" rx="3"/><rect x="50" width="12" height="250" rx="2"/><circle cx="111" cy="81" r="19" class="ac"/><circle cx="111" cy="169" r="19" class="ac"/></svg>Boucles</h1>' +
       '<button class="icon" id="refresh" aria-label="Actualiser le catalogue"><svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3.2h-3.2"/></svg></button>' +
       '<a class="icon" href="#/ajouter" aria-label="Ajouter un morceau"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg></a></div>' +
-      '<p class="sub" id="count"></p><p class="status" id="status" aria-live="polite"></p></header>' +
+      '<p class="sub" id="count"></p><p class="status" id="status" aria-live="polite"></p>' + daily() + '</header>' +
       '<div class="tools"><label class="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg>' +
       '<input type="search" id="q" placeholder="Titre ou artiste" autocomplete="off" autocorrect="off" spellcheck="false"></label>' +
       '<div class="seg" id="f" role="tablist">' +
@@ -280,11 +285,23 @@
     fillList();
     var y = load('scroll', 0); if (y) window.scrollTo(0, y);
   }
+  // Un morceau par jour, le même toute la journée, choisi parmi ceux jouables sans barré.
+  function daily() {
+    var pool = SONGS.filter(function (x) { return x.noBarre && x.kind !== 'perso'; });
+    if (!pool.length) return '';
+    var d = new Date(), seed = d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate();
+    var x = pool[(seed * 2654435761 >>> 0) % pool.length];
+    var delta = x.capo - x.easyCapo, fl = useFlats(shift(x.uniq[0], x.capo));
+    var loop = x.sections[0].bars.map(function (b) { return b.map(function (c) { return name(shift(c, delta), fl); }).join(' '); });
+    return '<a class="daily" href="#/' + x.id + '"><span class="k">Morceau du jour' + (x.easyCapo ? ' · capo ' + x.easyCapo : '') + '</span>' +
+      '<h2>' + esc(x.t) + '</h2><p>' + esc(x.a) + '</p>' +
+      '<div class="loopline">' + rep(false, 'rep') + loop.map(function (c, i) { return (i ? '<em class="sep"></em>' : '') + '<span>' + esc(c) + '</span>'; }).join('') + rep(true, 'rep') + '</div></a>';
+  }
   function paintCount() {
     var el = $('#count'); if (!el) return;
     var m = load('autoMeta', null);
-    el.textContent = SONGS.length.toLocaleString('fr-FR') + ' morceaux de rap français en accords grattés' +
-      (m && m.updated ? ' · catalogue du ' + new Date(m.updated).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '');
+    el.textContent = SONGS.length.toLocaleString('fr-FR') + ' morceaux · rap français · accords grattés' +
+      (m && m.updated ? ' · mis à jour le ' + new Date(m.updated).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '');
   }
   // Le catalogue est rafraîchi chaque jour par le robot du dépôt (GitHub Actions) ;
   // ce bouton va chercher la dernière version publiée.
@@ -319,16 +336,18 @@
     }).sort(function (x, y) {
       return (listState.f === 'nouveaux' ? y.d.localeCompare(x.d) : 0) || x.a.localeCompare(y.a, 'fr') || x.t.localeCompare(y.t, 'fr');
     });
-    var html = '', last = '';
-    rows.forEach(function (s) {
-      var group = listState.f === 'nouveaux' ? 'Ajouté le ' + new Date(s.d + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : s.a;
-      if (group !== last) { html += '<h2 class="artist">' + esc(group) + '</h2>'; last = group; }
+    var html = '', last = '', counts = {};
+    var groupOf = function (s) { return listState.f === 'nouveaux' ? 'Ajouté le ' + new Date(s.d + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : s.a; };
+    rows.forEach(function (s) { var g = groupOf(s); counts[g] = (counts[g] || 0) + 1; });
+    rows.forEach(function (s, i) {
+      var group = groupOf(s);
+      if (group !== last) { html += '<h2 class="artist">' + esc(group) + '<small>' + counts[group] + '</small></h2>'; last = group; }
       var easy = listState.f === 'facile';
       var delta = easy ? s.capo - s.easyCapo : 0;
       var fl = useFlats(shift(s.uniq[0], delta + (easy ? s.easyCapo : s.capo)));
       var ch = s.uniq.slice(0, 4).map(function (c) { return name(shift(c, delta), fl); }).join(' ') + (s.uniq.length > 4 ? ' …' : '');
       var k = easy ? s.easyCapo : s.capo;
-      html += '<a class="row" href="#/' + s.id + '"><span class="tt">' + esc(s.t) + (listState.f === 'nouveaux' ? '<small>' + esc(s.a) + '</small>' : '') + (favs[s.id] ? ' <i class="star" aria-label="favori">★</i>' : '') + '</span>' +
+      html += '<a class="row" style="--i:' + Math.min(i, 18) + '" href="#/' + s.id + '"><span class="tt">' + esc(s.t) + (listState.f === 'nouveaux' ? '<small>' + esc(s.a) + '</small>' : '') + (favs[s.id] ? ' <i class="star" aria-label="favori">★</i>' : '') + '</span>' +
         '<span class="ch">' + esc(ch) + (k ? '<em>capo ' + k + '</em>' : '') + '</span></a>';
     });
     var empty = { favoris: 'Aucun favori pour l’instant. Touchez l’étoile d’un morceau pour le garder ici.',
@@ -368,7 +387,7 @@
       '<section class="form">' +
       '<label><span>Titre</span><input id="ft" autocomplete="off" value="' + esc(d.t) + '"></label>' +
       '<label><span>Artiste</span><input id="fa" autocomplete="off" value="' + esc(d.a) + '"></label>' +
-      '<h2>1. Trouver les accords</h2><div id="sites"></div>' +
+      '<h2>1. Trouver les accords</h2><div id="sites" class="sites"></div>' +
       '<h2>2. Coller la page</h2>' +
       '<p class="muted small">Sur le site, sélectionnez tout le morceau, copiez, puis collez ici. Les paroles peuvent rester : seuls les accords sont gardés.</p>' +
       '<textarea id="fx" rows="8" placeholder="Collez ici…" autocomplete="off" autocorrect="off" spellcheck="false">' + esc(d.txt) + '</textarea>' +
@@ -421,9 +440,10 @@
     app.innerHTML =
       '<nav class="bar"><a href="#/" class="back" aria-label="Retour au répertoire"><svg viewBox="0 0 20 20"><path d="M12.5 4l-6 6 6 6"/></svg>Répertoire</a>' +
       '<button class="fav" id="fav" aria-label="Favori"></button></nav>' +
-      '<header class="song"><h1>' + esc(s.t) + '</h1><p class="sub">' + esc(s.a) + '</p></header>' +
+      '<header class="song"><p class="by">' + esc(s.a) + '</p><h1>' + esc(s.t) + '</h1>' +
+      '<p class="meta">' + s.uniq.length + ' accords · ' + s.sections.length + (s.sections.length > 1 ? ' parties' : ' boucle') + (s.capo ? ' · capo ' + s.capo + ' d’origine' : '') + (s.kind === 'main' ? ' · grille vérifiée' : '') + '</p></header>' +
       '<section class="ctl" id="ctl"></section>' +
-      '<section class="block"><h2>Accords</h2><div class="chords" id="chords"></div></section>' +
+      '<section class="block"><h2>Accords<small>touchez pour entendre</small></h2><div class="chords" id="chords"></div></section>' +
       '<section class="block"><h2>Rythmique</h2><div class="rhythm" id="rhythm"></div><div class="seg small" id="rsel"></div>' +
       '<div class="guide"><span>Guide sonore</span><div class="seg small" id="gsel"></div></div></section>' +
       '<section class="block" id="grid"></section>' +
@@ -531,13 +551,13 @@
     var fl = flats(), html = '', idx = 0;
     cur.song.sections.forEach(function (sec, si) {
       var reps = repsOf(sec);
-      html += '<div class="sec"><h2>' + esc(sec.n) + '<span class="muted"> · ' + sec.bars.length + ' mesure' + (sec.bars.length > 1 ? 's' : '') + ', en boucle</span></h2><div class="bars">';
+      html += '<div class="sec"><h2>' + esc(sec.n) + '<small>' + sec.bars.length + ' mesure' + (sec.bars.length > 1 ? 's' : '') + '</small></h2><div class="loopwrap">' + rep(false) + '<div class="bars">';
       sec.bars.forEach(function (b, bi) {
         html += '<button class="m' + (b.length > 1 ? ' two' : '') + '" data-s="' + si + '" data-b="' + bi + '">' +
           b.map(function (c) { return '<span>' + esc(name(shape(c), fl)) + '</span>'; }).join('') + '</button>';
         idx++;
       });
-      html += '</div><p class="reps">× ' + reps + ' à la lecture</p></div>';
+      html += '</div>' + rep(true) + '</div><p class="reps">× ' + reps + ' à la lecture</p></div>';
     });
     var g = $('#grid'); g.innerHTML = html;
     g.onclick = function (e) {
@@ -671,6 +691,10 @@
   }, function () {});
 
   if ('serviceWorker' in navigator && !/^(localhost|127\.)/.test(location.hostname)) {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }   // nouvelle version : on l'affiche tout de suite
+    });
+    navigator.serviceWorker.register('sw.js').then(function (r) { r.update(); }).catch(function () {});
   }
 })();

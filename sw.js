@@ -1,7 +1,7 @@
 // Cache d'abord, réseau ensuite : l'app marche sans connexion une fois ouverte.
 // ⚠ Incrémenter CACHE à chaque modification, sinon les iPhone où l'app est
 //   déjà installée continuent d'afficher l'ancienne version.
-const CACHE = 'boucles-v2';
+const CACHE = 'boucles-v3';
 const ASSETS = [
   './', './index.html', './app.js', './data.js', './convert.js', './data-auto.json', './fonts.css', './manifest.webmanifest',
   './icons/apple-touch-icon.png', './icons/icon-192.png', './icons/icon-512.png', './icons/favicon-32.png'

@@ -35,4 +35,5 @@ jobs:
           git add data-auto.json build/rejets.json build/file.json
           if git diff --cached --quiet; then echo "Rien de neuf."; exit 0; fi
           git commit -m "Catalogue : nouveaux morceaux du $(date +%d/%m/%Y)"
+          git pull --rebase -q origin main   # au cas où le dépôt a bougé pendant la collecte
           git push

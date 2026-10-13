@@ -21,17 +21,28 @@ UG = '--sans-ug' not in sys.argv
 BAC = '--sans-bac' not in sys.argv
 
 
+BLOCKED = set()   # sites qui ont répondu 429 pendant ce passage : on n'insiste pas
+
+
 def curl(url, data=None):
-    """Page en texte ; patiente et réessaie si le site répond « trop de requêtes » (429)."""
+    """Page en texte. Au premier « trop de requêtes » (429), le site est laissé de côté jusqu'au prochain passage."""
+    host = url.split('/')[2]
+    site = 'ug' if 'ultimate-guitar' in host else host
+    if site in BLOCKED:
+        return ''
     cmd = ['curl', '-sL', '--max-time', '25', '-A', UA, '-w', '\n%{http_code}', url]
     if data:
         cmd[1:1] = ['-X', 'POST', '--data-urlencode', data]
-    for _ in range(4):
+    for _ in range(3):
         r = subprocess.run(cmd, capture_output=True)
         body, _, code = r.stdout.decode('utf-8', 'replace').rpartition('\n')
         if code == '200' and body:
             return body
-        time.sleep(90 if code == '429' else 5)
+        if code == '429':
+            print('429 sur', site, ': pause jusqu\'au prochain passage', flush=True)
+            BLOCKED.add(site)
+            return ''
+        time.sleep(5)
     return ''
 
 
