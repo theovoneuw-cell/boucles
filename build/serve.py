@@ -16,7 +16,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         sys.stderr.write("  %s\n" % (fmt % a))
 
 port = int(sys.argv[1])
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("127.0.0.1", port), H) as s:
+socketserver.ThreadingTCPServer.allow_reuse_address = True
+socketserver.ThreadingTCPServer.daemon_threads = True
+with socketserver.ThreadingTCPServer(("127.0.0.1", port), H) as s:
     print("→ http://localhost:%d/" % port, flush=True)
     s.serve_forever()

@@ -165,12 +165,56 @@ h1 { font-size: 30px; line-height: 1.1; font-weight: 600; letter-spacing: -.02em
 .tempo output small { font: 400 12px var(--sans); color: var(--muted); }
 .loop { flex: none; height: 44px; font-size: 13.5px; max-width: 108px; line-height: 1.15; }
 @media (max-width: 360px) { .loop { max-width: 92px; font-size: 12.5px; } }
+/* en-tête du répertoire */
+.toprow { display: flex; align-items: center; gap: 2px; }
+.toprow h1 { flex: 1; display: flex; align-items: center; gap: 10px; }
+.mark { height: 26px; width: auto; fill: var(--fg); flex: none; }
+.mark .ac { fill: var(--accent); }
+.icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--fg); }
+.icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.icon:active { background: var(--soft); }
+.icon.spin svg { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status { margin: 6px 0 0; font-size: 14px; color: var(--accent); min-height: 0; }
+.status:empty { display: none; }
+#f { overflow-x: auto; scrollbar-width: none; }
+#f::-webkit-scrollbar { display: none; }
+#f button { flex: 1 0 auto; font-size: 13.5px; padding: 0 8px; }
+.tt small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 1px; }
+
+/* chercher ailleurs */
+.away { border-top: 1px solid var(--line); margin-top: 8px; padding: 18px 0 8px; }
+.away h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+.away > p { font-size: 14px; margin: 0 0 12px; }
+.site { display: grid; grid-template-columns: 1fr 20px; align-items: center; column-gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.site b { font-weight: 500; font-size: 16px; }
+.site span { grid-column: 1; font-size: 13px; color: var(--muted); }
+.site svg { grid-row: 1 / span 2; grid-column: 2; width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 1.7; stroke-linecap: round; }
+.site:active { opacity: .55; }
+.wide { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; margin-top: 14px; }
+
+/* import */
+.form { border-top: 1px solid var(--line); padding-top: 14px; }
+.form label { display: flex; align-items: center; height: 46px; border-bottom: 1px solid var(--line); }
+.form label span { width: 72px; flex: none; font-size: 14px; color: var(--muted); }
+.form input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: var(--fg); font: 400 16px var(--sans); }
+.form h2 { font-size: 15px; font-weight: 600; margin: 22px 0 6px; }
+.small { font-size: 13.5px; margin: 0 0 10px; }
+.form textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); color: var(--fg);
+  font: 400 16px/1.4 var(--mono); padding: 10px 12px; resize: vertical; outline: 0; }
+.form textarea:focus { border-color: var(--muted); }
+.form .sec h2 { margin: 14px 0 8px; font-size: 14px; }
+.warn { color: var(--accent); font-size: 14px; }
+.go-wide { width: 100%; height: 48px; border-radius: 12px; background: var(--fg); color: var(--bg); font-weight: 500; margin-top: 18px; }
+.go-wide:disabled { opacity: .35; }
+.note a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 </head>
 <body>
 <main id="app"></main>
 <script src="data.js"></script>
+<script src="convert.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

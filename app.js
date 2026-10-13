@@ -77,7 +77,8 @@
       var cands = [];
       if (EFORM[q]) cands.push([fe, EFORM[q]]);
       if (AFORM[q]) cands.push([fa, AFORM[q]]);
-      cands = cands.filter(function (x) { return x[0] + Math.min.apply(null, x[1].filter(function (o) { return o !== null; })) >= 0; });
+      // forme qui descendrait sous le sillet (A9 en forme de la) : on la joue une octave plus haut
+      cands.forEach(function (x) { if (x[0] + Math.min.apply(null, x[1].filter(function (o) { return o !== null; })) < 0) x[0] += 12; });
       cands.sort(function (x, y) { return x[0] - y[0]; });
       var f = cands[0][0], t = cands[0][1];
       v = t.map(function (o) { return o === null ? -1 : f + o; });
@@ -92,20 +93,34 @@
   }
   function fold(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
 
-  var SONGS = window.SONGS.map(function (s) {
+  // kind : 'main' (grilles vérifiées à la main), 'auto' (converties automatiquement), 'perso' (ajoutées sur ce téléphone).
+  function build(s, kind) {
     var sections = s.s.split(' / ').map(function (part) {
       var i = part.indexOf(':');
       var bars = part.slice(i + 1).trim().split('|').map(function (b) {
-        return b.trim().split(/\s+/).map(parse);
-      });
+        return b.trim().split(/\s+/).map(parse).filter(Boolean);
+      }).filter(function (b) { return b.length; });
       return { n: part.slice(0, i).trim(), bars: bars };
-    });
+    }).filter(function (sec) { return sec.bars.length; });
+    if (!sections.length) return null;
     var uniq = [], seen = {};
     sections.forEach(function (sec) { sec.bars.forEach(function (b) { b.forEach(function (c) {
       var k = name(c, false); if (!seen[k]) { seen[k] = 1; uniq.push(c); } }); }); });
-    return { id: slug(s.a + ' ' + s.t), t: s.t, a: s.a, capo: s.capo, r: s.r, sections: sections, uniq: uniq };
-  });
-  var BY = {}; SONGS.forEach(function (s) { BY[s.id] = s; });
+    var song = { id: (kind === 'perso' ? 'perso-' : '') + slug(s.a + ' ' + s.t), t: s.t, a: s.a, capo: s.capo || 0, r: s.r || 'ballade',
+      sections: sections, uniq: uniq, kind: kind, src: s.src || (kind === 'main' ? 'bac' : ''), u: s.u || '', d: s.d || '' };
+    var k = bestCapo(song, 0, false);
+    song.easyCapo = k;
+    song.noBarre = score(song, song.capo - k, false).max <= 2;
+    return song;
+  }
+  var SONGS = [], BY = {};
+  function rebuild() {
+    SONGS = []; BY = {};
+    var add = function (kind) { return function (s) { var x = build(s, kind); if (x && !BY[x.id]) { SONGS.push(x); BY[x.id] = x; } }; };
+    (window.SONGS || []).forEach(add('main'));
+    (window.SONGS_AUTO || []).forEach(add('auto'));
+    load('perso', []).forEach(add('perso'));
+  }
 
   // Score de difficulté pour un décalage de formes donné.
   function score(song, delta, simple) {
@@ -126,11 +141,7 @@
     }
     return best;
   }
-  SONGS.forEach(function (s) {
-    var k = bestCapo(s, 0, false);
-    s.easyCapo = k;
-    s.noBarre = score(s, s.capo - k, false).max <= 2;
-  });
+  rebuild();
 
   /* ---------- rythmiques ----------
      8 croches par mesure. B = bas, H = haut, X = étouffé (coup de paume), - = rien. */
@@ -161,6 +172,7 @@
     var bf = played.length ? mn : 0, from = -1, cnt = 0;
     if (bf > 0 && v[5] === bf) { for (i = 0; i < 6; i++) if (v[i] === bf) { cnt++; if (from < 0) from = i; } }
     var barre = cnt >= 2;
+    for (i = from; barre && i < 6; i++) if (v[i] === 0) barre = false;   // pas de barré sur une corde à vide
     if (barre) {
       var y = T + (bf - start + 0.5) * H;
       s += '<rect x="' + (L + from * G - 3.6) + '" y="' + (y - 3.6) + '" width="' + ((5 - from) * G + 7.2) + '" height="7.2" rx="3.6" class="dot"/>';
@@ -239,18 +251,22 @@
   function route() {
     stop();
     var h = location.hash.replace(/^#\/?/, '');
-    if (h && BY[h]) renderSong(BY[h]); else renderList();
+    if (h === 'ajouter') renderAdd();
+    else if (h && BY[h]) renderSong(BY[h]); else renderList();
   }
 
   /* ----- répertoire ----- */
   function renderList() {
     document.title = 'Boucles';
     app.innerHTML =
-      '<header class="top"><h1>Boucles</h1><p class="sub">' + SONGS.length + ' morceaux de rap français, en accords grattés</p></header>' +
+      '<header class="top"><div class="toprow"><h1><svg class="mark" viewBox="0 0 130 250" aria-hidden="true"><rect width="36" height="250" rx="3"/><rect x="50" width="12" height="250" rx="2"/><circle cx="111" cy="81" r="19" class="ac"/><circle cx="111" cy="169" r="19" class="ac"/></svg>Boucles</h1>' +
+      '<button class="icon" id="refresh" aria-label="Actualiser le catalogue"><svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3.2h-3.2"/></svg></button>' +
+      '<a class="icon" href="#/ajouter" aria-label="Ajouter un morceau"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg></a></div>' +
+      '<p class="sub" id="count"></p><p class="status" id="status" aria-live="polite"></p></header>' +
       '<div class="tools"><label class="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg>' +
       '<input type="search" id="q" placeholder="Titre ou artiste" autocomplete="off" autocorrect="off" spellcheck="false"></label>' +
       '<div class="seg" id="f" role="tablist">' +
-      ['tout:Tout', 'facile:Sans barré', 'favoris:Favoris'].map(function (x) {
+      ['tout:Tout', 'nouveaux:Nouveaux', 'facile:Faciles', 'favoris:Favoris', 'perso:Ajoutés'].map(function (x) {
         var p = x.split(':'); return '<button data-f="' + p[0] + '" role="tab">' + p[1] + '</button>';
       }).join('') + '</div></div><div id="list" class="list"></div>';
     var q = $('#q'); q.value = listState.q;
@@ -259,8 +275,37 @@
       var b = e.target.closest('button'); if (!b) return;
       listState.f = b.dataset.f; save('list', listState); fillList();
     });
+    $('#refresh').onclick = refresh;
+    paintCount();
     fillList();
     var y = load('scroll', 0); if (y) window.scrollTo(0, y);
+  }
+  function paintCount() {
+    var el = $('#count'); if (!el) return;
+    var m = load('autoMeta', null);
+    el.textContent = SONGS.length.toLocaleString('fr-FR') + ' morceaux de rap français en accords grattés' +
+      (m && m.updated ? ' · catalogue du ' + new Date(m.updated).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '');
+  }
+  // Le catalogue est rafraîchi chaque jour par le robot du dépôt (GitHub Actions) ;
+  // ce bouton va chercher la dernière version publiée.
+  function refresh() {
+    var b = $('#refresh'), st = $('#status');
+    if (b.classList.contains('spin')) return;
+    b.classList.add('spin'); st.textContent = 'Recherche des nouveaux morceaux…';
+    var before = {}; SONGS.forEach(function (x) { before[x.id] = 1; });
+    loadAuto(true).then(function () {
+      var fresh = SONGS.filter(function (x) { return !before[x.id]; });
+      var m = load('autoMeta', {});
+      st.textContent = fresh.length
+        ? fresh.length + (fresh.length > 1 ? ' nouveaux morceaux.' : ' nouveau morceau.')
+        : 'Rien de neuf depuis la dernière fois. Le robot repasse sur les sites toutes les 6 heures' +
+          (m.updated ? ' (dernier passage le ' + new Date(m.updated).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) + ')' : '') + '.';
+      if (fresh.length) { listState.f = 'nouveaux'; save('list', listState); }
+      paintCount(); fillList();
+    }, function (e) {
+      if (window.console) console.error(e);
+      st.textContent = 'Pas de connexion : le catalogue enregistré reste disponible.';
+    }).then(function () { b.classList.remove('spin'); });
   }
   function fillList() {
     [].forEach.call(document.querySelectorAll('#f button'), function (b) { b.setAttribute('aria-selected', b.dataset.f === listState.f); });
@@ -268,22 +313,96 @@
     var rows = SONGS.filter(function (s) {
       if (listState.f === 'facile' && !s.noBarre) return false;
       if (listState.f === 'favoris' && !favs[s.id]) return false;
-      return !q || fold(s.t + ' ' + s.a).indexOf(q) >= 0;
-    }).sort(function (x, y) { return x.a.localeCompare(y.a, 'fr') || x.t.localeCompare(y.t, 'fr'); });
+      if (listState.f === 'perso' && s.kind !== 'perso') return false;
+      if (listState.f === 'nouveaux' && !s.d) return false;
+      return !q || q.split(/\s+/).every(function (w) { return fold(s.t + ' ' + s.a).indexOf(w) >= 0; });
+    }).sort(function (x, y) {
+      return (listState.f === 'nouveaux' ? y.d.localeCompare(x.d) : 0) || x.a.localeCompare(y.a, 'fr') || x.t.localeCompare(y.t, 'fr');
+    });
     var html = '', last = '';
     rows.forEach(function (s) {
-      if (s.a !== last) { html += '<h2 class="artist">' + esc(s.a) + '</h2>'; last = s.a; }
+      var group = listState.f === 'nouveaux' ? 'Ajouté le ' + new Date(s.d + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : s.a;
+      if (group !== last) { html += '<h2 class="artist">' + esc(group) + '</h2>'; last = group; }
       var easy = listState.f === 'facile';
       var delta = easy ? s.capo - s.easyCapo : 0;
       var fl = useFlats(shift(s.uniq[0], delta + (easy ? s.easyCapo : s.capo)));
       var ch = s.uniq.slice(0, 4).map(function (c) { return name(shift(c, delta), fl); }).join(' ') + (s.uniq.length > 4 ? ' …' : '');
       var k = easy ? s.easyCapo : s.capo;
-      html += '<a class="row" href="#/' + s.id + '"><span class="tt">' + esc(s.t) + (favs[s.id] ? ' <i class="star" aria-label="favori">★</i>' : '') + '</span>' +
+      html += '<a class="row" href="#/' + s.id + '"><span class="tt">' + esc(s.t) + (listState.f === 'nouveaux' ? '<small>' + esc(s.a) + '</small>' : '') + (favs[s.id] ? ' <i class="star" aria-label="favori">★</i>' : '') + '</span>' +
         '<span class="ch">' + esc(ch) + (k ? '<em>capo ' + k + '</em>' : '') + '</span></a>';
     });
-    $('#list').innerHTML = html || '<p class="empty">' + (listState.f === 'favoris' ? 'Aucun favori pour l’instant. Touchez l’étoile d’un morceau pour le garder ici.' : 'Aucun morceau ne correspond.') + '</p>';
+    var empty = { favoris: 'Aucun favori pour l’instant. Touchez l’étoile d’un morceau pour le garder ici.',
+      nouveaux: 'Pas encore de nouveautés. Le robot passe toutes les 6 heures sur les sites d’accords ; touchez ↻ pour aller les chercher.',
+      perso: 'Aucun morceau ajouté. Le bouton + en haut permet d’en importer un depuis n’importe quel site d’accords.' }[listState.f] || 'Aucun morceau ne correspond.';
+    $('#list').innerHTML = (html || '<p class="empty">' + empty + '</p>') + elsewhere(listState.q.trim());
+  }
+  /* Recherche sur les gros sites d'accords. Ils ne laissent pas une autre app lire leurs pages :
+     on ouvre la recherche dans Safari, puis on importe le morceau par copier-coller. */
+  var SITES = [
+    { nom: 'Ultimate Guitar', d: 'le plus gros catalogue, beaucoup de rap actuel', u: 'https://www.ultimate-guitar.com/search.php?search_type=title&value=' },
+    { nom: 'Chordify', d: 'accords détectés sur n’importe quel son de YouTube', u: 'https://chordify.net/search/' },
+    { nom: 'La Boîte à chansons', d: 'relevés en français', u: 'https://www.google.com/search?q=site%3Aboiteachansons.net+' },
+    { nom: 'Google', d: 'toutes les pages « accords guitare »', u: 'https://www.google.com/search?q=accords+guitare+' }
+  ];
+  function siteLinks(q) {
+    return SITES.map(function (x) {
+      return '<a class="site" target="_blank" rel="noopener" href="' + x.u + encodeURIComponent(q).replace(/%20/g, '+') + '"><b>' + x.nom + '</b><span>' + x.d + '</span>' +
+        '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4h9v9M16 4L5 15"/></svg></a>';
+    }).join('');
+  }
+  function elsewhere(q) {
+    return '<section class="away"><h2>' + (q ? 'Chercher « ' + esc(q) + ' » ailleurs' : 'Pas dans la liste ?') + '</h2>' +
+      (q ? siteLinks(q) : '<p class="muted">Tapez un titre ou un artiste : la recherche s’étend aussi aux sites d’accords.</p>') +
+      '<a class="tog wide" href="#/ajouter' + '">Importer un morceau trouvé sur un site</a></section>';
   }
   window.addEventListener('scroll', function () { if (!location.hash.slice(2)) save('scroll', window.scrollY); }, { passive: true });
+
+  /* ----- import par copier-coller ----- */
+  function renderAdd() {
+    document.title = 'Ajouter · Boucles';
+    window.scrollTo(0, 0);
+    var d = load('draft', { t: '', a: '', txt: '' });
+    app.innerHTML =
+      '<nav class="bar"><a href="#/" class="back"><svg viewBox="0 0 20 20"><path d="M12.5 4l-6 6 6 6"/></svg>Répertoire</a></nav>' +
+      '<header class="song"><h1>Ajouter un morceau</h1><p class="sub">Depuis n’importe quel site d’accords</p></header>' +
+      '<section class="form">' +
+      '<label><span>Titre</span><input id="ft" autocomplete="off" value="' + esc(d.t) + '"></label>' +
+      '<label><span>Artiste</span><input id="fa" autocomplete="off" value="' + esc(d.a) + '"></label>' +
+      '<h2>1. Trouver les accords</h2><div id="sites"></div>' +
+      '<h2>2. Coller la page</h2>' +
+      '<p class="muted small">Sur le site, sélectionnez tout le morceau, copiez, puis collez ici. Les paroles peuvent rester : seuls les accords sont gardés.</p>' +
+      '<textarea id="fx" rows="8" placeholder="Collez ici…" autocomplete="off" autocorrect="off" spellcheck="false">' + esc(d.txt) + '</textarea>' +
+      '<div id="prev"></div></section>';
+    var t = $('#ft'), a = $('#fa'), x = $('#fx');
+    function upd() {
+      save('draft', { t: t.value, a: a.value, txt: x.value });
+      var q = (t.value + ' ' + a.value).trim();
+      $('#sites').innerHTML = q ? siteLinks(q) : '<p class="muted small">Indiquez le titre et l’artiste pour chercher sur les sites.</p>';
+      var r = x.value.trim() ? window.Convert.convert(x.value) : null;
+      var pv = $('#prev');
+      if (!x.value.trim()) { pv.innerHTML = ''; return; }
+      if (!r) { pv.innerHTML = '<p class="warn">Aucun accord reconnu dans ce texte.</p>'; return; }
+      var song = build({ t: t.value || 'Sans titre', a: a.value || 'Inconnu', capo: r.capo, s: r.s }, 'perso');
+      var fl = useFlats(shift(song.uniq[0], song.capo));
+      pv.innerHTML = '<h2>3. Vérifier</h2>' + (r.capo ? '<p class="small">Capo ' + r.capo + '</p>' : '') +
+        song.sections.map(function (sec) {
+          return '<div class="sec"><h2>' + esc(sec.n) + '</h2><div class="bars">' + sec.bars.map(function (b) {
+            return '<div class="m' + (b.length > 1 ? ' two' : '') + '">' + b.map(function (c) { return '<span>' + esc(name(c, fl)) + '</span>'; }).join('') + '</div>';
+          }).join('') + '</div></div>';
+        }).join('') +
+        '<button class="go-wide" id="save"' + (t.value.trim() && a.value.trim() ? '' : ' disabled') + '>Ajouter au répertoire</button>' +
+        (t.value.trim() && a.value.trim() ? '' : '<p class="muted small">Titre et artiste nécessaires pour enregistrer.</p>');
+      var b = $('#save');
+      if (b) b.onclick = function () {
+        var list = load('perso', []).filter(function (o) { return slug(o.a + ' ' + o.t) !== slug(a.value + ' ' + t.value); });
+        list.push({ t: t.value.trim(), a: a.value.trim(), capo: r.capo, s: r.s, r: 'ballade' });
+        save('perso', list); save('draft', { t: '', a: '', txt: '' });
+        rebuild(); location.hash = '#/perso-' + slug(a.value.trim() + ' ' + t.value.trim());
+      };
+    }
+    [t, a, x].forEach(function (el) { el.addEventListener('input', upd); });
+    upd();
+  }
 
   /* ----- morceau ----- */
   var cur = null; // { song, st, flat }
@@ -308,13 +427,26 @@
       '<section class="block"><h2>Rythmique</h2><div class="rhythm" id="rhythm"></div><div class="seg small" id="rsel"></div>' +
       '<div class="guide"><span>Guide sonore</span><div class="seg small" id="gsel"></div></div></section>' +
       '<section class="block" id="grid"></section>' +
-      '<p class="note">Grille établie d’après les relevés de La Boîte à chansons, ramenée à ses boucles. Touchez une mesure pour lancer la lecture à partir d’elle.</p>' +
+      '<p class="note">' + sourceNote(s) + ' Touchez une mesure pour lancer la lecture à partir d’elle.</p>' +
+      (s.kind === 'perso' ? '<button class="tog ghost wide" id="del">Supprimer ce morceau</button>' : '') +
       '<div class="play" id="play"></div>';
     $('#fav').addEventListener('click', function () {
       if (favs[s.id]) delete favs[s.id]; else favs[s.id] = 1;
       save('favs', favs); paintFav();
     });
     paintFav(); paintAll(); paintPlayer();
+    if ($('#del')) $('#del').onclick = function () {
+      if (!confirm('Supprimer « ' + s.t + ' » de vos morceaux ?')) return;
+      save('perso', load('perso', []).filter(function (x) { return 'perso-' + slug(x.a + ' ' + x.t) !== s.id; }));
+      rebuild(); location.hash = '#/';
+    };
+  }
+  function sourceNote(s) {
+    if (s.kind === 'main') return 'Grille vérifiée, établie d’après les relevés de La Boîte à chansons et ramenée à ses boucles.';
+    if (s.kind === 'perso') return 'Morceau importé sur ce téléphone. Les accords ont été repérés automatiquement dans le texte collé.';
+    var site = s.src === 'ug' ? 'Ultimate Guitar' : 'La Boîte à chansons';
+    return 'Grille générée automatiquement à partir d’un relevé ' + site + (s.u ? ' (<a href="' + esc(s.u) + '" target="_blank" rel="noopener">voir l’original</a>)' : '') +
+      '. Les boucles peuvent différer un peu du morceau : fiez-vous à l’oreille.';
   }
   function persist() { save('m:' + cur.song.id, cur.st); }
   function paintFav() {
@@ -521,8 +653,22 @@
   }
   document.addEventListener('visibilitychange', function () { if (document.hidden && P) stop(); });
 
+  function loadAuto(fresh) {
+    return fetch('data-auto.json' + (fresh ? '?t=' + Date.now() : ''), { cache: fresh ? 'no-store' : 'default' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) {
+        window.SONGS_AUTO = j.songs || [];
+        save('autoMeta', { updated: j.updated, count: (j.songs || []).length });
+        rebuild();
+      });
+  }
+
   window.addEventListener('hashchange', route);
   route();
+  loadAuto(false).then(function () {
+    var h = location.hash.replace(/^#\/?/, '');
+    if (!h) { paintCount(); fillList(); } else if (!cur || cur.song.id !== h) route();
+  }, function () {});
 
   if ('serviceWorker' in navigator && !/^(localhost|127\.)/.test(location.hostname)) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
