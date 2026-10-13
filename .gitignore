@@ -1,2 +1,3 @@
 .DS_Store
 build/nouveaux.json
+__pycache__/
